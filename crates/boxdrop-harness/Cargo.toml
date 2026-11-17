@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 boxdrop-core.workspace = true
 boxdrop-engine.workspace = true
+boxdrop-net.workspace = true
 boxdrop-fs.workspace = true
 boxdrop-store.workspace = true
 anyhow.workspace = true
@@ -30,3 +31,4 @@ tempfile.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+walkdir.workspace = true

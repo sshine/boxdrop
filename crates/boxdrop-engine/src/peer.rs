@@ -152,7 +152,17 @@ pub async fn serve_once(
     address: &str,
     options: &SyncOptions,
 ) -> Result<SyncStats> {
-    let mut connection = Connection::accept_once(address).await?;
+    let connection = Connection::accept_once(address).await?;
+    serve_connection(store, root, connection, options).await
+}
+
+/// Serve one already-accepted connection.
+pub async fn serve_connection(
+    store: &Store,
+    root: &Root,
+    mut connection: Connection,
+    options: &SyncOptions,
+) -> Result<SyncStats> {
     let hello: Hello = match connection.recv::<Request>().await? {
         Request::Hello(hello) => hello,
         other => bail!("expected hello, got {other:?}"),

@@ -245,6 +245,7 @@ dependencies = [
  "boxdrop-core",
  "boxdrop-engine",
  "boxdrop-fs",
+ "boxdrop-net",
  "boxdrop-store",
  "clap",
  "rand",
@@ -255,6 +256,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
 ]
 
 [[package]]

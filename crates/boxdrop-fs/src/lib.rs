@@ -62,11 +62,13 @@ impl ScanOptions {
     pub fn ignored(&self, relative: &str) -> bool {
         let mut components = relative.split('/');
         components.any(|component| {
-            self.ignore.iter().any(|pattern| {
-                pattern == component
-                    || component.ends_with(pattern.trim_start_matches('*'))
-                    || (pattern.starts_with("*.") && component.ends_with(&pattern[1..]))
-            })
+            component.starts_with(".boxdrop-tmp")
+                || component.starts_with(".boxdrop-tmp-")
+                || self.ignore.iter().any(|pattern| {
+                    pattern == component
+                        || component.ends_with(pattern.trim_start_matches('*'))
+                        || (pattern.starts_with("*.") && component.ends_with(&pattern[1..]))
+                })
         })
     }
 }
