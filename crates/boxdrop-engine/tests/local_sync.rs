@@ -151,6 +151,35 @@ fn unchanged_tree_does_not_grow_history() {
 }
 
 #[test]
+fn restore_and_diff_use_snapshot_history() {
+    let a = host();
+    fs::write(a.path.join("f"), b"first").unwrap();
+    let (tree, _) = boxdrop_engine::scan_and_index(&a.store, &a.root).unwrap();
+    let first = boxdrop_engine::snapshot(&a.store, &a.root, &tree, Some("first")).unwrap();
+
+    fs::write(a.path.join("f"), b"second").unwrap();
+    fs::write(a.path.join("g"), b"new").unwrap();
+    let (tree, _) = boxdrop_engine::scan_and_index(&a.store, &a.root).unwrap();
+    let second = boxdrop_engine::snapshot(&a.store, &a.root, &tree, Some("second")).unwrap();
+
+    let diff = boxdrop_engine::diff::diff_snapshots(&a.store, first.id, second.id).unwrap();
+    assert!(
+        diff.iter()
+            .any(|entry| entry.path == "f" && entry.status == "modified")
+    );
+    assert!(
+        diff.iter()
+            .any(|entry| entry.path == "g" && entry.status == "added")
+    );
+
+    let restore_dir = a.path.with_file_name("restore");
+    let count = boxdrop_engine::restore_snapshot(&a.store, first.id, &restore_dir, None).unwrap();
+    assert!(count >= 1);
+    assert_eq!(fs::read(restore_dir.join("f")).unwrap(), b"first");
+    assert!(!restore_dir.join("g").exists());
+}
+
+#[test]
 fn snapshot_history_records_each_sync() {
     let a = host();
     let b = host();

@@ -93,6 +93,173 @@ fn conflicts_lists_conflict_copies() {
 }
 
 #[test]
+fn ssh_transport_uses_the_same_protocol() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = TempDir::new().unwrap();
+    let local_root = dir.path().join("local");
+    let remote_root = dir.path().join("remote");
+    let local_state = dir.path().join("local-state");
+    let remote_state = dir.path().join("remote-state");
+    fs::create_dir_all(&local_root).unwrap();
+    fs::create_dir_all(&remote_root).unwrap();
+
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let ssh = bin.join("ssh");
+    fs::write(
+        &ssh,
+        "#!/bin/sh\nfor last; do :; done\nexec sh -c \"$last\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&ssh, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let boxdrop_bin = env!("CARGO_BIN_EXE_boxdrop");
+    assert!(
+        Command::new(boxdrop_bin)
+            .args([
+                "--state",
+                local_state.to_string_lossy().as_ref(),
+                "--root",
+                local_root.to_string_lossy().as_ref(),
+                "init",
+                local_root.to_string_lossy().as_ref(),
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        Command::new(boxdrop_bin)
+            .args([
+                "--state",
+                remote_state.to_string_lossy().as_ref(),
+                "--root",
+                remote_root.to_string_lossy().as_ref(),
+                "init",
+                remote_root.to_string_lossy().as_ref(),
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    fs::write(local_root.join("over-ssh"), b"ssh payload").unwrap();
+
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new(boxdrop_bin)
+        .env("PATH", path)
+        .args([
+            "--state",
+            local_state.to_string_lossy().as_ref(),
+            "--root",
+            local_root.to_string_lossy().as_ref(),
+            "sync",
+            "--ssh",
+            "fake-host",
+            "--remote-root",
+            remote_root.to_string_lossy().as_ref(),
+            "--remote-state",
+            remote_state.to_string_lossy().as_ref(),
+            "--remote-boxdrop",
+            boxdrop_bin,
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        fs::read(remote_root.join("over-ssh")).unwrap(),
+        b"ssh payload"
+    );
+}
+
+#[test]
+fn restore_and_diff_are_reachable_from_the_cli() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    let state = dir.path().join("state");
+    fs::create_dir_all(&root).unwrap();
+    let root_arg = root.to_string_lossy().into_owned();
+    assert!(
+        boxdrop(&state, &["--root", &root_arg, "init", &root_arg])
+            .status
+            .success()
+    );
+    fs::write(root.join("f"), b"one").unwrap();
+    assert!(
+        boxdrop(
+            &state,
+            &["--root", &root_arg, "snapshot", "--message", "one"]
+        )
+        .status
+        .success()
+    );
+    let log = boxdrop(&state, &["--root", &root_arg, "log", "--json"]);
+    let snapshots: Vec<serde_json::Value> = serde_json::from_slice(&log.stdout).unwrap();
+    let first = snapshots
+        .iter()
+        .find(|snapshot| snapshot["message"] == "one")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    fs::write(root.join("f"), b"two").unwrap();
+    assert!(
+        boxdrop(
+            &state,
+            &["--root", &root_arg, "snapshot", "--message", "two"]
+        )
+        .status
+        .success()
+    );
+    let log = boxdrop(&state, &["--root", &root_arg, "log", "--json"]);
+    let snapshots: Vec<serde_json::Value> = serde_json::from_slice(&log.stdout).unwrap();
+    let second = snapshots
+        .iter()
+        .find(|snapshot| snapshot["message"] == "two")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let diff = boxdrop(
+        &state,
+        &["--root", &root_arg, "diff", &first, &second, "--json"],
+    );
+    assert!(diff.status.success());
+    let diff: Vec<serde_json::Value> = serde_json::from_slice(&diff.stdout).unwrap();
+    assert!(diff.iter().any(|entry| entry["path"] == "f"));
+
+    let restore_to = dir.path().join("restored");
+    let restored = boxdrop(
+        &state,
+        &[
+            "--root",
+            &root_arg,
+            "restore",
+            &first,
+            "--to",
+            restore_to.to_string_lossy().as_ref(),
+        ],
+    );
+    assert!(
+        restored.status.success(),
+        "{}",
+        String::from_utf8_lossy(&restored.stderr)
+    );
+    assert_eq!(fs::read(restore_to.join("f")).unwrap(), b"one");
+}
+
+#[test]
 fn pause_and_resume_persist_without_a_daemon() {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("root");

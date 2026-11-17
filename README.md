@@ -25,19 +25,25 @@ are:
 
 ## Status
 
-Milestones 0–3 are implemented: the workspace and flake, the local and TCP sync
-engine, the simulation/soak harness, and the daemon with its durable queue,
-separate watcher, D-Bus status and CLI fallback.
-
-The GNOME Shell extension, native ZFS/Btrfs backends and remote history
-commands are the next milestones.
+Milestones 0–4 are implemented: the workspace and flake, the local/TCP/SSH sync
+engine, the simulation/soak harness, the daemon with its durable queue,
+separate watcher and D-Bus status, conflict-policy selection, and snapshot
+restore/diff. The GNOME Shell extension and native ZFS/Btrfs backends remain.
 
 ```sh
 boxdrop init ~/Boxdrop
 boxdropd --root ~/Boxdrop --peer laptop:7777   # or the NixOS module
 boxdrop status
 boxdrop pause
-boxdrop sync --one-shot
+
+# One-shot, no daemon:
+boxdrop sync --ssh me@laptop \
+  --remote-root /home/me/Boxdrop \
+  --remote-state /home/me/.local/state/boxdrop
+
+boxdrop log
+boxdrop diff <snapshot-a> <snapshot-b>
+boxdrop restore <snapshot> --path notes/todo.md --to /tmp/old-todo
 ```
 
 ## Design shorthand

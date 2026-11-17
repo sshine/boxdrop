@@ -19,6 +19,7 @@ path = "src/main.rs"
 boxdrop-core.workspace = true
 boxdrop-engine.workspace = true
 boxdrop-fs.workspace = true
+boxdrop-net.workspace = true
 boxdrop-store.workspace = true
 anyhow.workspace = true
 clap.workspace = true

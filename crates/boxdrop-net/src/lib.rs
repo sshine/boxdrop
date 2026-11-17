@@ -3,24 +3,29 @@
 //! Frames are `u32` big-endian length followed by a bincode payload. The limit
 //! is deliberately finite: a peer must not be able to make the receiver allocate
 //! arbitrary memory.
+//!
+//! The connection is generic over the byte stream. TCP is the harness transport;
+//! SSH uses the same frames over a child process's stdin/stdout.
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 pub const MAX_FRAME: usize = 256 * 1024 * 1024;
 
-pub struct Connection {
-    stream: TcpStream,
+pub struct Connection<S> {
+    stream: S,
 }
 
-impl Connection {
-    pub fn new(stream: TcpStream) -> Self {
+impl<S> Connection<S> {
+    pub fn new(stream: S) -> Self {
         Self { stream }
     }
+}
 
+impl Connection<TcpStream> {
     pub async fn connect(address: &str) -> Result<Self> {
         let stream = TcpStream::connect(address)
             .await
@@ -37,7 +42,9 @@ impl Connection {
         stream.set_nodelay(true)?;
         Ok(Self { stream })
     }
+}
 
+impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     pub async fn send<T: Serialize>(&mut self, value: &T) -> Result<()> {
         let bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
             .context("encoding frame")?;

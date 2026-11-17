@@ -42,6 +42,9 @@ struct Cli {
     #[arg(long, default_value_t = 60)]
     rescan_secs: u64,
 
+    #[arg(long, default_value = "conflict-copy")]
+    conflict_policy: String,
+
     #[arg(long)]
     no_dbus: bool,
 
@@ -82,6 +85,10 @@ async fn main() -> Result<()> {
         no_watch: cli.no_watch,
         once: cli.once,
         run_for_secs: cli.run_for_secs,
+        conflict_policy: cli
+            .conflict_policy
+            .parse()
+            .map_err(|error: String| anyhow::anyhow!(error))?,
     };
     run(config).await
 }

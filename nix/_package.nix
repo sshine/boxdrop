@@ -3,6 +3,7 @@
   rustPlatform,
   makeWrapper,
   pkg-config,
+  openssh,
   sqlite,
   util-linux,
   ...
@@ -47,7 +48,12 @@ rustPlatform.buildRustPackage {
   '';
 
   postInstall = ''
-    wrapProgram $out/bin/boxdrop --prefix PATH : ${lib.makeBinPath [ sqlite ]}
+    wrapProgram $out/bin/boxdrop --prefix PATH : ${
+      lib.makeBinPath [
+        sqlite
+        openssh
+      ]
+    }
     wrapProgram $out/bin/boxdrop-harness --prefix PATH : ${lib.makeBinPath [ util-linux ]}
   '';
 

@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
+use boxdrop_core::ConflictPolicy;
 use boxdrop_engine::{
     Root, SyncOptions, init_root, refresh_paths, scan_and_index, serve_connection, snapshot,
     sync_over_tcp,
@@ -34,6 +35,7 @@ pub struct Config {
     pub no_watch: bool,
     pub once: bool,
     pub run_for_secs: Option<u64>,
+    pub conflict_policy: ConflictPolicy,
 }
 
 impl Default for Config {
@@ -53,6 +55,7 @@ impl Default for Config {
             no_watch: false,
             once: false,
             run_for_secs: None,
+            conflict_policy: ConflictPolicy::ConflictCopy,
         }
     }
 }
@@ -76,6 +79,9 @@ pub async fn run(config: Config) -> Result<()> {
         }
     }
     store.reset_expired_leases(now_ms())?;
+    let options = SyncOptions {
+        conflict_policy: config.conflict_policy,
+    };
 
     let mut watcher_child = None;
     if !config.no_watch {
@@ -105,6 +111,7 @@ pub async fn run(config: Config) -> Result<()> {
         let store = Arc::clone(&store);
         let root = Arc::clone(&root);
         let status = Arc::clone(&status);
+        let options = options.clone();
         tokio::spawn(async move {
             match TcpListener::bind(&address).await {
                 Ok(listener) => {
@@ -113,14 +120,7 @@ pub async fn run(config: Config) -> Result<()> {
                         match listener.accept().await {
                             Ok((stream, _)) => {
                                 let connection = boxdrop_net::Connection::new(stream);
-                                match serve_connection(
-                                    &store,
-                                    &root,
-                                    connection,
-                                    &SyncOptions::default(),
-                                )
-                                .await
-                                {
+                                match serve_connection(&store, &root, connection, &options).await {
                                     Ok(stats) => {
                                         let mut status =
                                             status.lock().unwrap_or_else(|p| p.into_inner());
@@ -169,7 +169,7 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     if config.once {
-        full_sync(&store, &root, config.peer.as_deref(), &status).await?;
+        full_sync(&store, &root, config.peer.as_deref(), &options, &status).await?;
         info!("one-shot sync complete");
         return Ok(());
     }
@@ -207,7 +207,9 @@ pub async fn run(config: Config) -> Result<()> {
         }
 
         if sync_now.swap(false, Ordering::Relaxed) {
-            if let Err(error) = full_sync(&store, &root, config.peer.as_deref(), &status).await {
+            if let Err(error) =
+                full_sync(&store, &root, config.peer.as_deref(), &options, &status).await
+            {
                 set_error(&status, error);
             }
         }
@@ -216,7 +218,9 @@ pub async fn run(config: Config) -> Result<()> {
             || last_rescan.elapsed() >= Duration::from_secs(config.rescan_secs.max(1))
         {
             last_rescan = std::time::Instant::now();
-            if let Err(error) = full_sync(&store, &root, config.peer.as_deref(), &status).await {
+            if let Err(error) =
+                full_sync(&store, &root, config.peer.as_deref(), &options, &status).await
+            {
                 set_error(&status, error);
             }
         }
@@ -230,7 +234,15 @@ pub async fn run(config: Config) -> Result<()> {
             .iter()
             .map(|item| item.path.clone())
             .collect::<Vec<_>>();
-        let result = process_batch(&store, &root, &paths, config.peer.as_deref(), &status).await;
+        let result = process_batch(
+            &store,
+            &root,
+            &paths,
+            config.peer.as_deref(),
+            &options,
+            &status,
+        )
+        .await;
         match result {
             Ok(()) => {
                 for item in &items {
@@ -260,6 +272,7 @@ async fn process_batch(
     root: &Root,
     paths: &[String],
     peer: Option<&str>,
+    options: &SyncOptions,
     status: &Arc<Mutex<Status>>,
 ) -> Result<()> {
     {
@@ -275,7 +288,7 @@ async fn process_batch(
         status.progress = 25;
     }
     let sync_stats = if let Some(peer) = peer {
-        Some(sync_over_tcp(store, root, peer, &SyncOptions::default()).await?)
+        Some(sync_over_tcp(store, root, peer, options).await?)
     } else {
         snapshot(store, root, &tree, Some("queued change"))?;
         None
@@ -319,6 +332,7 @@ async fn full_sync(
     store: &Store,
     root: &Root,
     peer: Option<&str>,
+    options: &SyncOptions,
     status: &Arc<Mutex<Status>>,
 ) -> Result<()> {
     {
@@ -334,7 +348,7 @@ async fn full_sync(
         status.progress = 40;
     }
     let sync_stats = if let Some(peer) = peer {
-        Some(sync_over_tcp(store, root, peer, &SyncOptions::default()).await?)
+        Some(sync_over_tcp(store, root, peer, options).await?)
     } else {
         snapshot(store, root, &tree, Some("scan"))?;
         None

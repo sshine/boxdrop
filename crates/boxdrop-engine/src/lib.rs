@@ -5,15 +5,18 @@
 //! simulator.
 
 mod apply;
+pub mod diff;
 mod local;
 mod peer;
 mod reconcile;
+mod restore;
 mod scan;
 
 pub use apply::{apply_entry, blocks_for_entry, manifest_from_store};
 pub use local::{SyncStats, init_root, snapshot, sync_local};
-pub use peer::{serve_connection, serve_once, sync_over_tcp};
+pub use peer::{serve_connection, serve_once, sync_over_stream, sync_over_tcp};
 pub use reconcile::{ConflictChoice, reconcile};
+pub use restore::restore_snapshot;
 pub use scan::{IndexStats, Root, refresh_paths, scan_and_index};
 
 use boxdrop_core::ConflictPolicy;

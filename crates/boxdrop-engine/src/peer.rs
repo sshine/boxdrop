@@ -7,6 +7,7 @@ use boxdrop_proto::{
     Block, FileBlocks, FileRequest, Hello, Plan, Request, Response, SyncStats as WireStats,
 };
 use boxdrop_store::Store;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::SyncOptions;
 use crate::apply::{apply_entry, blocks_for_entry, manifest_from_store, merge_metadata};
@@ -18,10 +19,24 @@ pub async fn sync_over_tcp(
     store: &Store,
     root: &Root,
     address: &str,
-    _options: &SyncOptions,
+    options: &SyncOptions,
 ) -> Result<SyncStats> {
+    let connection = Connection::connect(address).await?;
+    sync_over_stream(store, root, connection, options).await
+}
+
+/// Run a client session over any byte stream, including the stdin/stdout of an
+/// SSH child process.
+pub async fn sync_over_stream<S>(
+    store: &Store,
+    root: &Root,
+    mut connection: Connection<S>,
+    _options: &SyncOptions,
+) -> Result<SyncStats>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     let (local, _) = scan_and_index(store, root)?;
-    let mut connection = Connection::connect(address).await?;
     connection
         .send(&Request::Hello(Hello {
             protocol: PROTOCOL_VERSION,
@@ -157,12 +172,15 @@ pub async fn serve_once(
 }
 
 /// Serve one already-accepted connection.
-pub async fn serve_connection(
+pub async fn serve_connection<S>(
     store: &Store,
     root: &Root,
-    mut connection: Connection,
+    mut connection: Connection<S>,
     options: &SyncOptions,
-) -> Result<SyncStats> {
+) -> Result<SyncStats>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
     let hello: Hello = match connection.recv::<Request>().await? {
         Request::Hello(hello) => hello,
         other => bail!("expected hello, got {other:?}"),

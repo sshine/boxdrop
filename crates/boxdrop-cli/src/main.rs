@@ -1,8 +1,15 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
-use anyhow::{Context, Result};
-use boxdrop_engine::{Root, init_root, scan_and_index, snapshot, sync_over_tcp};
+use anyhow::{Context, Result, bail};
+use boxdrop_core::{ConflictPolicy, Hash32};
+use boxdrop_engine::diff::diff_snapshots;
+use boxdrop_engine::{
+    Root, SyncOptions, init_root, restore_snapshot, scan_and_index, serve_connection, snapshot,
+    sync_over_stream, sync_over_tcp,
+};
 use boxdrop_fs::ScanOptions;
+use boxdrop_net::Connection;
 use boxdrop_store::{Store, now_ms};
 use clap::{Parser, Subcommand};
 use serde::Serialize;
@@ -45,8 +52,31 @@ enum Command {
     Sync {
         #[arg(long)]
         one_shot: bool,
+        /// TCP peer, host:port.
         #[arg(long)]
         peer: Option<String>,
+        /// SSH destination, user@host. Runs `boxdrop serve --stdio` remotely.
+        #[arg(long)]
+        ssh: Option<String>,
+        #[arg(long)]
+        ssh_port: Option<u16>,
+        #[arg(long)]
+        remote_root: Option<PathBuf>,
+        #[arg(long)]
+        remote_state: Option<PathBuf>,
+        #[arg(long, default_value = "boxdrop")]
+        remote_boxdrop: String,
+        #[arg(long, default_value = "conflict-copy")]
+        conflict_policy: String,
+    },
+    /// Serve one peer session over stdio or TCP.
+    Serve {
+        #[arg(long)]
+        stdio: bool,
+        #[arg(long)]
+        listen: Option<String>,
+        #[arg(long, default_value = "conflict-copy")]
+        conflict_policy: String,
     },
     /// Pause the daemon.
     Pause,
@@ -63,6 +93,16 @@ enum Command {
     Log {
         #[arg(long, default_value_t = 20)]
         limit: u32,
+    },
+    /// Compare two snapshots.
+    Diff { left: String, right: String },
+    /// Restore a snapshot, or one path from it, into the root or another directory.
+    Restore {
+        snapshot: String,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        to: Option<PathBuf>,
     },
     /// Check local limits and state.
     Doctor,
@@ -91,14 +131,43 @@ async fn main() -> Result<()> {
         .init();
     let cli = Cli::parse();
     let state = cli.state.unwrap_or_else(default_state_dir);
+
     match cli.command {
         Command::Init { path } => {
             let store = Store::open(&state)?;
             let root = init_root(&store, &path)?;
             println!("initialized {} ({})", path.display(), root.root_id);
         }
-        Command::Status => status(&store_or_open(&state)?, cli.json).await?,
-        Command::Sync { one_shot, peer } => {
+        Command::Status => status(&Store::open(&state)?, cli.json).await?,
+        Command::Sync {
+            one_shot,
+            peer,
+            ssh,
+            ssh_port,
+            remote_root,
+            remote_state,
+            remote_boxdrop,
+            conflict_policy,
+        } => {
+            let policy = parse_policy(&conflict_policy)?;
+            if let Some(destination) = ssh {
+                let store = Store::open(&state)?;
+                let root = resolve_root(&store, cli.root.as_deref())?;
+                let remote_root = remote_root.unwrap_or_else(|| root.path.clone());
+                ssh_sync(
+                    &store,
+                    &root,
+                    &destination,
+                    ssh_port,
+                    &remote_root,
+                    remote_state.as_deref(),
+                    &remote_boxdrop,
+                    policy,
+                    cli.json,
+                )
+                .await?;
+                return Ok(());
+            }
             if !one_shot {
                 if let Some(proxy) = proxy().await? {
                     proxy.call::<_, _, ()>("SyncNow", &()).await?;
@@ -108,7 +177,33 @@ async fn main() -> Result<()> {
             }
             let store = Store::open(&state)?;
             let root = resolve_root(&store, cli.root.as_deref())?;
-            one_shot_sync(&store, &root, peer.as_deref(), cli.json).await?;
+            one_shot_sync(&store, &root, peer.as_deref(), policy, cli.json).await?;
+        }
+        Command::Serve {
+            stdio,
+            listen,
+            conflict_policy,
+        } => {
+            let policy = parse_policy(&conflict_policy)?;
+            let store = Store::open(&state)?;
+            let root = resolve_root(&store, cli.root.as_deref())?;
+            let options = SyncOptions {
+                conflict_policy: policy,
+            };
+            if stdio {
+                let stream = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());
+                serve_connection(&store, &root, Connection::new(stream), &options).await?;
+            } else if let Some(address) = listen {
+                let listener = tokio::net::TcpListener::bind(&address).await?;
+                eprintln!("serving on {address}");
+                loop {
+                    let (stream, _) = listener.accept().await?;
+                    let connection = Connection::new(stream);
+                    serve_connection(&store, &root, connection, &options).await?;
+                }
+            } else {
+                bail!("serve needs --stdio or --listen");
+            }
         }
         Command::Pause => {
             if let Some(proxy) = proxy().await? {
@@ -174,13 +269,38 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Command::Diff { left, right } => {
+            let store = Store::open(&state)?;
+            let left: Hash32 = left.parse()?;
+            let right: Hash32 = right.parse()?;
+            let diff = diff_snapshots(&store, left, right)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&diff)?);
+            } else {
+                for entry in diff {
+                    println!("{:<8} {}", entry.status, entry.path);
+                }
+            }
+        }
+        Command::Restore {
+            snapshot: snapshot_text,
+            path,
+            to,
+        } => {
+            let store = Store::open(&state)?;
+            let root = resolve_root(&store, cli.root.as_deref())?;
+            let snapshot_id: Hash32 = snapshot_text.parse()?;
+            let destination = to.unwrap_or_else(|| root.path.clone());
+            let count = restore_snapshot(&store, snapshot_id, &destination, path.as_deref())?;
+            if destination == root.path {
+                let (tree, _) = scan_and_index(&store, &root)?;
+                snapshot(&store, &root, &tree, Some("restore"))?;
+            }
+            println!("restored {count} entries into {}", destination.display());
+        }
         Command::Doctor => doctor(&state)?,
     }
     Ok(())
-}
-
-fn store_or_open(state: &std::path::Path) -> Result<Store> {
-    Store::open(state)
 }
 
 async fn status(store: &Store, json_output: bool) -> Result<()> {
@@ -286,12 +406,15 @@ async fn one_shot_sync(
     store: &Store,
     root: &Root,
     peer: Option<&str>,
+    policy: ConflictPolicy,
     json_output: bool,
 ) -> Result<()> {
     let started = now_ms();
+    let options = SyncOptions {
+        conflict_policy: policy,
+    };
     if let Some(peer) = peer {
-        let stats =
-            sync_over_tcp(store, root, peer, &boxdrop_engine::SyncOptions::default()).await?;
+        let stats = sync_over_tcp(store, root, peer, &options).await?;
         if json_output {
             println!(
                 "{}",
@@ -345,7 +468,118 @@ async fn one_shot_sync(
     Ok(())
 }
 
-fn resolve_root(store: &Store, requested: Option<&std::path::Path>) -> Result<Root> {
+#[allow(clippy::too_many_arguments)]
+async fn ssh_sync(
+    store: &Store,
+    root: &Root,
+    destination: &str,
+    port: Option<u16>,
+    remote_root: &Path,
+    remote_state: Option<&Path>,
+    remote_boxdrop: &str,
+    policy: ConflictPolicy,
+    json_output: bool,
+) -> Result<()> {
+    validate_ssh_target(destination)?;
+    let mut remote = vec![
+        remote_boxdrop.to_owned(),
+        "serve".to_owned(),
+        "--stdio".to_owned(),
+        "--root".to_owned(),
+        remote_root.to_string_lossy().into_owned(),
+    ];
+    if let Some(state) = remote_state {
+        remote.push("--state".to_owned());
+        remote.push(state.to_string_lossy().into_owned());
+    }
+    remote.push("--conflict-policy".to_owned());
+    remote.push(policy.as_str().to_owned());
+    let remote_command = remote
+        .iter()
+        .map(|part| shell_quote(part))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let mut command = tokio::process::Command::new("ssh");
+    command.arg("-T");
+    if let Some(port) = port {
+        command.args(["-p", &port.to_string()]);
+    }
+    command
+        .arg(destination)
+        .arg(remote_command)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("starting ssh to {destination}"))?;
+    let stdin = child.stdin.take().context("ssh stdin is not piped")?;
+    let stdout = child.stdout.take().context("ssh stdout is not piped")?;
+    let connection = Connection::new(tokio::io::join(stdout, stdin));
+    let started = now_ms();
+    let stats = sync_over_stream(
+        store,
+        root,
+        connection,
+        &SyncOptions {
+            conflict_policy: policy,
+        },
+    )
+    .await?;
+    let status = child.wait().await?;
+    if !status.success() {
+        bail!("ssh exited with {status}");
+    }
+    if json_output {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "mode": "ssh",
+                "destination": destination,
+                "pushed": stats.pushed,
+                "pulled": stats.pulled,
+                "conflicts": stats.conflicts,
+                "bytes_up": stats.bytes_up,
+                "bytes_down": stats.bytes_down,
+                "elapsed_ms": now_ms() - started,
+            }))?
+        );
+    } else {
+        println!(
+            "synced over ssh with {destination}: {} pushed, {} pulled, {} conflicts in {} ms",
+            stats.pushed,
+            stats.pulled,
+            stats.conflicts,
+            now_ms() - started
+        );
+    }
+    Ok(())
+}
+
+fn validate_ssh_target(target: &str) -> Result<()> {
+    if target.starts_with('-')
+        || target.is_empty()
+        || target
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+    {
+        bail!("invalid ssh destination: {target}");
+    }
+    Ok(())
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn parse_policy(value: &str) -> Result<ConflictPolicy> {
+    value
+        .parse()
+        .map_err(|error: String| anyhow::anyhow!(error))
+}
+
+fn resolve_root(store: &Store, requested: Option<&Path>) -> Result<Root> {
     if let Some(path) = requested {
         return Root::from_path(store, path);
     }
@@ -357,7 +591,7 @@ fn resolve_root(store: &Store, requested: Option<&std::path::Path>) -> Result<Ro
     Ok(Root::new(root_id, device_id, path))
 }
 
-fn doctor(state: &std::path::Path) -> Result<()> {
+fn doctor(state: &Path) -> Result<()> {
     let store = Store::open(state)?;
     let local = local_status(&store)?;
     let watches = std::fs::read_to_string("/proc/sys/fs/inotify/max_user_watches")
