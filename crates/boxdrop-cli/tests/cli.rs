@@ -260,6 +260,44 @@ fn restore_and_diff_are_reachable_from_the_cli() {
 }
 
 #[test]
+fn native_status_reports_the_filesystem_capabilities() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    let state = dir.path().join("state");
+    fs::create_dir_all(&root).unwrap();
+    assert!(
+        boxdrop(
+            &state,
+            &[
+                "--root",
+                root.to_string_lossy().as_ref(),
+                "init",
+                root.to_string_lossy().as_ref()
+            ]
+        )
+        .status
+        .success()
+    );
+    let output = boxdrop(
+        &state,
+        &[
+            "--root",
+            root.to_string_lossy().as_ref(),
+            "native",
+            "status",
+            "--json",
+        ],
+    );
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(matches!(
+        value["kind"].as_str().unwrap(),
+        "portable" | "reflink" | "zfs" | "btrfs"
+    ));
+    assert!(value["reflink"].is_boolean());
+}
+
+#[test]
 fn pause_and_resume_persist_without_a_daemon() {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("root");

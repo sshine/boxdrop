@@ -9,8 +9,12 @@ use anyhow::{Context, Result, bail};
 use boxdrop_core::{ContentManifest, EntryKind, Fingerprint, Hash32, MIN_BLOCK};
 use walkdir::WalkDir;
 
+pub mod native;
 pub mod watch;
 
+pub use native::{
+    Capabilities, NativeKind, NativeSnapshot, changed_paths, create_snapshot, detect,
+};
 pub use watch::{WatchEvent, WatchKind, Watcher, watch_root};
 
 /// One file, directory or symlink found by a scan. `blocks` holds the file's

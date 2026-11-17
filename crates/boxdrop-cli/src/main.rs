@@ -104,8 +104,23 @@ enum Command {
         #[arg(long)]
         to: Option<PathBuf>,
     },
+    /// Inspect or use native filesystem snapshots.
+    Native {
+        #[command(subcommand)]
+        command: NativeCommand,
+    },
     /// Check local limits and state.
     Doctor,
+}
+
+#[derive(Subcommand)]
+enum NativeCommand {
+    /// Show the detected filesystem capabilities.
+    Status,
+    /// Create a native ZFS or Btrfs snapshot.
+    Snapshot { name: String },
+    /// List paths changed between two native snapshots.
+    Changed { from: String, to: String },
 }
 
 #[derive(Serialize)]
@@ -297,6 +312,44 @@ async fn main() -> Result<()> {
                 snapshot(&store, &root, &tree, Some("restore"))?;
             }
             println!("restored {count} entries into {}", destination.display());
+        }
+        Command::Native { command } => {
+            let store = Store::open(&state)?;
+            let root = resolve_root(&store, cli.root.as_deref())?;
+            match command {
+                NativeCommand::Status => {
+                    let capabilities = boxdrop_fs::detect(&root.path)?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&capabilities)?);
+                    } else {
+                        println!("kind: {:?}", capabilities.kind);
+                        println!("filesystem: {}", capabilities.fstype);
+                        println!("mount: {}", capabilities.mount_point.display());
+                        println!("source: {}", capabilities.source);
+                        println!("reflink: {}", capabilities.reflink);
+                        if let Some(dataset) = capabilities.zfs_dataset {
+                            println!("zfs dataset: {dataset}");
+                        }
+                        if let Some(subvolume) = capabilities.btrfs_subvolume {
+                            println!("btrfs subvolume: {subvolume}");
+                        }
+                    }
+                }
+                NativeCommand::Snapshot { name } => {
+                    let snapshot = boxdrop_fs::create_snapshot(&root.path, &name)?;
+                    println!("{}", snapshot.reference);
+                }
+                NativeCommand::Changed { from, to } => {
+                    let paths = boxdrop_fs::changed_paths(&root.path, &from, &to)?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&paths)?);
+                    } else {
+                        for path in paths {
+                            println!("{path}");
+                        }
+                    }
+                }
+            }
         }
         Command::Doctor => doctor(&state)?,
     }
@@ -607,6 +660,14 @@ fn doctor(state: &Path) -> Result<()> {
         "metadata: db {} bytes, blobs {} bytes, chunks {}",
         local.db_bytes, local.blob_bytes, local.chunks
     );
+    if let Some(root) = local.roots.first() {
+        if let Ok(capabilities) = boxdrop_fs::detect(Path::new(root)) {
+            println!(
+                "native: {:?} ({}, reflink={})",
+                capabilities.kind, capabilities.fstype, capabilities.reflink
+            );
+        }
+    }
     Ok(())
 }
 
