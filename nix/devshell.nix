@@ -18,11 +18,6 @@
           pkgs.sqlite
           pkgs.util-linux
           pkgs.iproute2
-          pkgs.glib
-          pkgs.gjs
-          pkgs.gnome-shell
-          pkgs.zfs
-          pkgs.btrfs-progs
         ];
 
         env = [
