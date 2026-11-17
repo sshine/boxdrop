@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct RecentSync {
     pub at_ms: i64,
     pub paths: u64,
+    #[serde(default)]
+    pub sample: Vec<String>,
     pub bytes_up: u64,
     pub bytes_down: u64,
     pub conflicts: u64,

@@ -234,7 +234,10 @@ export default class BoxdropExtension extends Extension {
             .slice(0, 4)
             .map(item => {
                 const when = formatAge(item.at_ms ?? 0);
-                return `${when}: ${item.paths ?? 0} paths`;
+                const sample = item.sample?.[0];
+                return sample
+                    ? `${when}: ${sample}`
+                    : `${when}: ${item.paths ?? 0} paths`;
             })
             .join('\n');
     }

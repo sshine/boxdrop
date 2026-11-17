@@ -303,6 +303,7 @@ async fn process_batch(
             RecentSync {
                 at_ms: now_ms(),
                 paths: paths.len() as u64,
+                sample: paths.iter().take(5).cloned().collect(),
                 bytes_up: sync_stats.bytes_up,
                 bytes_down: sync_stats.bytes_down,
                 conflicts: sync_stats.conflicts,
@@ -314,6 +315,7 @@ async fn process_batch(
             RecentSync {
                 at_ms: now_ms(),
                 paths: paths.len() as u64,
+                sample: paths.iter().take(5).cloned().collect(),
                 bytes_up: 0,
                 bytes_down: 0,
                 conflicts: 0,
@@ -358,6 +360,7 @@ async fn full_sync(
             RecentSync {
                 at_ms: now_ms(),
                 paths: 0,
+                sample: Vec::new(),
                 bytes_up: sync_stats.bytes_up,
                 bytes_down: sync_stats.bytes_down,
                 conflicts: sync_stats.conflicts,

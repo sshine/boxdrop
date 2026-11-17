@@ -460,7 +460,17 @@ fn print_status_value(status: &serde_json::Value) {
                 .get("at_ms")
                 .and_then(|value| value.as_i64())
                 .unwrap_or(0);
-            println!("recent: {paths} paths at {at}");
+            let sample = item
+                .get("sample")
+                .and_then(|value| value.as_array())
+                .and_then(|values| values.first())
+                .and_then(|value| value.as_str())
+                .unwrap_or("");
+            if sample.is_empty() {
+                println!("recent: {paths} paths at {at}");
+            } else {
+                println!("recent: {paths} paths at {at} ({sample})");
+            }
         }
     }
     if let Some(error) = status.get("error").and_then(|value| value.as_str()) {
