@@ -23,6 +23,8 @@ rustPlatform.buildRustPackage {
       ../Cargo.lock
       ../crates
       ../README.md
+      ../LICENSE-MIT
+      ../LICENSE-APACHE
     ];
   };
 
