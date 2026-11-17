@@ -10,6 +10,7 @@
     let
       cfg = config.services.boxdrop;
       defaultPackage = pkgs.callPackage ./_package.nix { };
+      defaultExtension = pkgs.callPackage ./_extension.nix { };
       arguments = [
         "--root"
         cfg.root
@@ -60,21 +61,42 @@
           default = [ ];
           description = "Extra arguments passed to boxdropd.";
         };
+
+        gnome.enable = lib.mkEnableOption "the Boxdrop GNOME Shell top-bar extension";
+
+        gnome.package = lib.mkOption {
+          type = lib.types.package;
+          default = defaultExtension;
+          defaultText = lib.literalExpression "pkgs.callPackage ./_extension.nix { }";
+          description = "The GNOME Shell extension package.";
+        };
       };
 
       config = lib.mkIf cfg.enable {
         systemd.user.services.boxdrop = {
-          Unit = {
-            Description = "Boxdrop file synchronization daemon";
-            After = [ "graphical-session.target" ];
-          };
-          Service = {
+          description = "Boxdrop file synchronization daemon";
+          after = [ "graphical-session.target" ];
+          wantedBy = [ "default.target" ];
+          serviceConfig = {
             ExecStart = "${cfg.package}/bin/boxdropd ${lib.escapeShellArgs arguments}";
             Restart = "on-failure";
             RestartSec = 2;
             StateDirectory = "boxdrop";
           };
-          Install.WantedBy = [ "default.target" ];
+        };
+
+        environment.systemPackages = lib.mkIf cfg.gnome.enable [ cfg.gnome.package ];
+
+        programs.dconf = lib.mkIf cfg.gnome.enable {
+          enable = true;
+          profiles.user.databases = [
+            {
+              settings."org/gnome/shell" = {
+                disable-user-extensions = false;
+                enabled-extensions = [ "boxdrop@simonshine.dk" ];
+              };
+            }
+          ];
         };
       };
     };

@@ -87,6 +87,20 @@ impl DbusDaemon {
     }
 
     #[zbus(property)]
+    fn root(&self) -> String {
+        self.store
+            .list_roots()
+            .ok()
+            .and_then(|roots| {
+                roots
+                    .into_iter()
+                    .next()
+                    .map(|(_, path, _)| path.display().to_string())
+            })
+            .unwrap_or_default()
+    }
+
+    #[zbus(property)]
     fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_owned()
     }

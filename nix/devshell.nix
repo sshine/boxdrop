@@ -18,6 +18,7 @@
           pkgs.sqlite
           pkgs.util-linux
           pkgs.iproute2
+          pkgs.gjs
         ];
 
         env = [

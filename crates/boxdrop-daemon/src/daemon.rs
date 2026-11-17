@@ -73,6 +73,7 @@ pub async fn run(config: Config) -> Result<()> {
     {
         let mut status = status.lock().unwrap_or_else(|p| p.into_inner());
         status.file_count = store.file_count(root.root_id)?;
+        status.root = root.path.display().to_string();
         status.paused = store.paused()?;
         if status.paused {
             status.state = "paused".to_owned();

@@ -21,6 +21,7 @@ pub struct Status {
     pub queue_pending: u64,
     pub queue_leased: u64,
     pub file_count: u64,
+    pub root: String,
     pub recent: Vec<RecentSync>,
     pub error: Option<String>,
 }
@@ -38,6 +39,7 @@ impl Default for Status {
             queue_pending: 0,
             queue_leased: 0,
             file_count: 0,
+            root: String::new(),
             recent: Vec::new(),
             error: None,
         }

@@ -1,0 +1,8 @@
+{
+  "uuid": "boxdrop@simonshine.dk",
+  "name": "Boxdrop",
+  "description": "Sync status, progress, pause and recent activity for Boxdrop",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/sshine/boxdrop",
+  "version": 1
+}

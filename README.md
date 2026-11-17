@@ -25,10 +25,11 @@ are:
 
 ## Status
 
-Milestones 0–4 are implemented: the workspace and flake, the local/TCP/SSH sync
+Milestones 0–5 are implemented: the workspace and flake, the local/TCP/SSH sync
 engine, the simulation/soak harness, the daemon with its durable queue,
-separate watcher and D-Bus status, conflict-policy selection, and snapshot
-restore/diff. The GNOME Shell extension and native ZFS/Btrfs backends remain.
+separate watcher and D-Bus status, conflict-policy selection, snapshot
+restore/diff, and the GNOME Shell top-bar extension. Native ZFS/Btrfs
+backends remain.
 
 ```sh
 boxdrop init ~/Boxdrop

@@ -26,6 +26,15 @@ build:
 nix-build:
     nix build .#default --no-link --print-out-paths
 
+# Validate the GNOME extension metadata and JavaScript syntax
+extension-check:
+    jq -e . gnome/boxdrop/metadata.json >/dev/null
+    @out="$$(gjs -m gnome/boxdrop/extension.js 2>&1 || true)"; \
+    if printf '%s\n' "$$out" | grep -q 'SyntaxError'; then \
+        printf '%s\n' "$$out"; exit 1; \
+    fi
+    nix build .#boxdrop-extension --no-link --print-out-paths
+
 # Run the deterministic simulation
 sim:
     cargo run -p boxdrop-harness -- sim
@@ -39,5 +48,5 @@ soak duration="10m" high="512MiB" low="256MiB":
     cargo run -p boxdrop-harness -- soak --duration {{duration}} --high-water {{high}} --low-water {{low}}
 
 # Everything CI runs
-ci: fmt-check lint test nix-build
+ci: fmt-check lint test extension-check nix-build
     @echo "All CI checks passed"
