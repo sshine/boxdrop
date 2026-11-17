@@ -29,6 +29,10 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+    }
     let cli = Cli::parse();
     let (_watcher, receiver) =
         watch_root(&cli.root).with_context(|| format!("watching {}", cli.root.display()))?;

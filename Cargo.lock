@@ -190,6 +190,7 @@ dependencies = [
  "boxdrop-store",
  "clap",
  "fs2",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
