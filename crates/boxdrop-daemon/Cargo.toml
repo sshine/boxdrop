@@ -12,6 +12,10 @@ description = "The Boxdrop background daemon"
 name = "boxdropd"
 path = "src/main.rs"
 
+[[bin]]
+name = "boxdrop-watch"
+path = "src/bin/boxdrop-watch.rs"
+
 [lints]
 workspace = true
 

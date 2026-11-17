@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 
 pub mod watch;
 
-pub use watch::{WatchEvent, WatchKind, Watcher};
+pub use watch::{WatchEvent, WatchKind, Watcher, watch_root};
 
 /// One file, directory or symlink found by a scan. `blocks` holds the file's
 /// bytes for small and medium files; the engine stores them in the CAS.

@@ -25,8 +25,20 @@ are:
 
 ## Status
 
-Milestone 0 (skeleton), milestone 1 (local and TCP sync) and milestone 2
-(simulation) are in progress. The daemon and CLI are milestone 3.
+Milestones 0–3 are implemented: the workspace and flake, the local and TCP sync
+engine, the simulation/soak harness, and the daemon with its durable queue,
+separate watcher, D-Bus status and CLI fallback.
+
+The GNOME Shell extension, native ZFS/Btrfs backends and remote history
+commands are the next milestones.
+
+```sh
+boxdrop init ~/Boxdrop
+boxdropd --root ~/Boxdrop --peer laptop:7777   # or the NixOS module
+boxdrop status
+boxdrop pause
+boxdrop sync --one-shot
+```
 
 ## Design shorthand
 

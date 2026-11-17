@@ -117,6 +117,40 @@ fn modified_listener_catches_up() {
 }
 
 #[test]
+fn refresh_paths_tombstones_removed_directories() {
+    let a = host();
+    fs::create_dir_all(a.path.join("dir/sub")).unwrap();
+    fs::write(a.path.join("dir/sub/file"), b"gone soon").unwrap();
+    boxdrop_engine::scan_and_index(&a.store, &a.root).unwrap();
+    fs::remove_dir_all(a.path.join("dir")).unwrap();
+    let (tree, stats) = boxdrop_engine::refresh_paths(
+        &a.store,
+        &a.root,
+        &["dir".to_owned(), "dir/sub/file".to_owned()],
+    )
+    .unwrap();
+    assert!(stats.deleted >= 2);
+    assert!(tree.get("dir").unwrap().is_deleted());
+    assert!(tree.get("dir/sub/file").unwrap().is_deleted());
+    assert_eq!(a.store.file_count(a.root.root_id).unwrap(), 0);
+}
+
+#[test]
+fn unchanged_tree_does_not_grow_history() {
+    let a = host();
+    fs::write(a.path.join("f"), b"steady").unwrap();
+    let before = a.store.list_snapshots(a.root.root_id, 100).unwrap().len();
+    let (tree, _) = boxdrop_engine::scan_and_index(&a.store, &a.root).unwrap();
+    let first = boxdrop_engine::snapshot(&a.store, &a.root, &tree, Some("one")).unwrap();
+    let second = boxdrop_engine::snapshot(&a.store, &a.root, &tree, Some("two")).unwrap();
+    assert_eq!(first.id, second.id);
+    assert_eq!(
+        a.store.list_snapshots(a.root.root_id, 100).unwrap().len(),
+        before + 1
+    );
+}
+
+#[test]
 fn snapshot_history_records_each_sync() {
     let a = host();
     let b = host();

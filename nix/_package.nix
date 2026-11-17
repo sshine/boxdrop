@@ -41,6 +41,7 @@ rustPlatform.buildRustPackage {
     if [ ! -x "$target_dir/boxdrop" ]; then target_dir="target/release"; fi
     install -Dm755 "$target_dir/boxdrop" $out/bin/boxdrop
     install -Dm755 "$target_dir/boxdropd" $out/bin/boxdropd
+    install -Dm755 "$target_dir/boxdrop-watch" $out/bin/boxdrop-watch
     install -Dm755 "$target_dir/boxdrop-harness" $out/bin/boxdrop-harness
     runHook postInstall
   '';

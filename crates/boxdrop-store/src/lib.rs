@@ -148,6 +148,25 @@ impl Store {
         }
     }
 
+    pub fn list_roots(&self) -> Result<Vec<(RootId, PathBuf, DeviceId)>> {
+        let conn = self.conn();
+        let mut statement =
+            conn.prepare("SELECT root_id, path, device_id FROM roots ORDER BY path")?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut roots = Vec::new();
+        for row in rows {
+            let (root_id, path, device_id) = row?;
+            roots.push((root_id.parse()?, PathBuf::from(path), device_id.parse()?));
+        }
+        Ok(roots)
+    }
+
     pub fn root(&self, root_id: RootId) -> Result<Option<(PathBuf, DeviceId)>> {
         let conn = self.conn();
         let row = conn

@@ -12,7 +12,6 @@
         packages = [
           toolchain
           config.treefmt.build.wrapper
-          pkgs.cargo
           pkgs.git
           pkgs.jq
           pkgs.just

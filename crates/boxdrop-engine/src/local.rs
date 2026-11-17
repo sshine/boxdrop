@@ -110,8 +110,16 @@ pub fn snapshot(
     tree: &TreeManifest,
     message: Option<&str>,
 ) -> Result<boxdrop_core::Snapshot> {
-    let parents = store
-        .list_snapshots(root.root_id, 1)?
+    let latest = store.list_snapshots(root.root_id, 1)?;
+    let tree_hash = tree.tree_hash();
+    // A periodic rescan of an unchanged tree must not grow the history. Only a
+    // new tree earns a new snapshot.
+    if let Some(latest) = latest.first() {
+        if latest.tree_hash == tree_hash {
+            return Ok(latest.clone());
+        }
+    }
+    let parents = latest
         .first()
         .map(|snapshot| snapshot.id)
         .into_iter()

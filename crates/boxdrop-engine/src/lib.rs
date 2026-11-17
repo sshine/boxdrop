@@ -11,10 +11,10 @@ mod reconcile;
 mod scan;
 
 pub use apply::{apply_entry, blocks_for_entry, manifest_from_store};
-pub use local::{SyncStats, init_root, sync_local};
+pub use local::{SyncStats, init_root, snapshot, sync_local};
 pub use peer::{serve_connection, serve_once, sync_over_tcp};
 pub use reconcile::{ConflictChoice, reconcile};
-pub use scan::{IndexStats, Root, scan_and_index};
+pub use scan::{IndexStats, Root, refresh_paths, scan_and_index};
 
 use boxdrop_core::ConflictPolicy;
 
