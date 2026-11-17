@@ -29,6 +29,14 @@ pub struct StoredFile {
     pub fingerprint: Fingerprint,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Peer {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+    pub enabled: bool,
+}
+
 #[derive(Clone, Debug)]
 pub struct QueueItem {
     pub id: i64,
@@ -643,6 +651,47 @@ impl Store {
         Ok(paths)
     }
 
+    pub fn add_peer(&self, root_id: RootId, name: &str, address: &str) -> Result<()> {
+        let conn = self.conn();
+        let id = format!("{root_id}/{name}");
+        conn.execute(
+            "INSERT INTO peers(id, root_id, name, address, enabled)
+             VALUES (?1, ?2, ?3, ?4, 1)
+             ON CONFLICT(id) DO UPDATE SET address = excluded.address, enabled = 1",
+            params![id, root_id.to_string(), name, address],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_peer(&self, root_id: RootId, name: &str) -> Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "DELETE FROM peers WHERE root_id = ?1 AND name = ?2",
+            params![root_id.to_string(), name],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_peers(&self, root_id: RootId) -> Result<Vec<Peer>> {
+        let conn = self.conn();
+        let mut statement = conn.prepare(
+            "SELECT id, name, address, enabled FROM peers WHERE root_id = ?1 ORDER BY name",
+        )?;
+        let rows = statement.query_map([root_id.to_string()], |row| {
+            Ok(Peer {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                address: row.get(2)?,
+                enabled: row.get::<_, i64>(3)? != 0,
+            })
+        })?;
+        let mut peers = Vec::new();
+        for row in rows {
+            peers.push(row?);
+        }
+        Ok(peers)
+    }
+
     pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
         let conn = self.conn();
         conn.execute(
@@ -878,6 +927,19 @@ mod tests {
         assert_eq!(store.list_snapshots(root, 10).unwrap().len(), 2);
         // The second snapshot shares the first snapshot's tree blob.
         assert_eq!(store.tree_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn peers_round_trip_and_remove() {
+        let (_dir, store) = store();
+        let root = RootId::new();
+        store.add_peer(root, "laptop", "laptop:7777").unwrap();
+        store.add_peer(root, "server", "server:7777").unwrap();
+        let peers = store.list_peers(root).unwrap();
+        assert_eq!(peers.len(), 2);
+        assert_eq!(peers[0].name, "laptop");
+        store.remove_peer(root, "laptop").unwrap();
+        assert_eq!(store.list_peers(root).unwrap().len(), 1);
     }
 
     #[test]

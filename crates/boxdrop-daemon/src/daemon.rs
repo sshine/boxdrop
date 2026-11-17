@@ -7,9 +7,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use boxdrop_core::ConflictPolicy;
+use boxdrop_core::TreeManifest;
 use boxdrop_engine::{
-    Root, SyncOptions, init_root, refresh_paths, scan_and_index, serve_connection, snapshot,
-    sync_over_tcp,
+    Root, SyncOptions, SyncStats, init_root, refresh_paths, scan_and_index, serve_connection,
+    snapshot, sync_over_tcp,
 };
 use boxdrop_store::{Store, now_ms};
 use tokio::net::TcpListener;
@@ -83,6 +84,17 @@ pub async fn run(config: Config) -> Result<()> {
     let options = SyncOptions {
         conflict_policy: config.conflict_policy,
     };
+    let mut peers = store
+        .list_peers(root.root_id)?
+        .into_iter()
+        .filter(|peer| peer.enabled)
+        .map(|peer| peer.address)
+        .collect::<Vec<_>>();
+    if let Some(peer) = config.peer.clone() {
+        if !peers.contains(&peer) {
+            peers.push(peer);
+        }
+    }
 
     let mut watcher_child = None;
     if !config.no_watch {
@@ -170,7 +182,7 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     if config.once {
-        full_sync(&store, &root, config.peer.as_deref(), &options, &status).await?;
+        full_sync(&store, &root, &peers, &options, &status).await?;
         info!("one-shot sync complete");
         return Ok(());
     }
@@ -208,9 +220,7 @@ pub async fn run(config: Config) -> Result<()> {
         }
 
         if sync_now.swap(false, Ordering::Relaxed) {
-            if let Err(error) =
-                full_sync(&store, &root, config.peer.as_deref(), &options, &status).await
-            {
+            if let Err(error) = full_sync(&store, &root, &peers, &options, &status).await {
                 set_error(&status, error);
             }
         }
@@ -219,9 +229,7 @@ pub async fn run(config: Config) -> Result<()> {
             || last_rescan.elapsed() >= Duration::from_secs(config.rescan_secs.max(1))
         {
             last_rescan = std::time::Instant::now();
-            if let Err(error) =
-                full_sync(&store, &root, config.peer.as_deref(), &options, &status).await
-            {
+            if let Err(error) = full_sync(&store, &root, &peers, &options, &status).await {
                 set_error(&status, error);
             }
         }
@@ -235,15 +243,7 @@ pub async fn run(config: Config) -> Result<()> {
             .iter()
             .map(|item| item.path.clone())
             .collect::<Vec<_>>();
-        let result = process_batch(
-            &store,
-            &root,
-            &paths,
-            config.peer.as_deref(),
-            &options,
-            &status,
-        )
-        .await;
+        let result = process_batch(&store, &root, &paths, &peers, &options, &status).await;
         match result {
             Ok(()) => {
                 for item in &items {
@@ -272,7 +272,7 @@ async fn process_batch(
     store: &Store,
     root: &Root,
     paths: &[String],
-    peer: Option<&str>,
+    peers: &[String],
     options: &SyncOptions,
     status: &Arc<Mutex<Status>>,
 ) -> Result<()> {
@@ -288,12 +288,7 @@ async fn process_batch(
         status.state = "syncing".to_owned();
         status.progress = 25;
     }
-    let sync_stats = if let Some(peer) = peer {
-        Some(sync_over_tcp(store, root, peer, options).await?)
-    } else {
-        snapshot(store, root, &tree, Some("queued change"))?;
-        None
-    };
+    let sync_stats = sync_peers(store, root, peers, options, &tree, "queued change").await?;
     let mut status = status.lock().unwrap_or_else(|p| p.into_inner());
     status.state = "resting".to_owned();
     status.progress = 100;
@@ -332,7 +327,7 @@ async fn process_batch(
 async fn full_sync(
     store: &Store,
     root: &Root,
-    peer: Option<&str>,
+    peers: &[String],
     options: &SyncOptions,
     status: &Arc<Mutex<Status>>,
 ) -> Result<()> {
@@ -348,12 +343,7 @@ async fn full_sync(
         status.state = "syncing".to_owned();
         status.progress = 40;
     }
-    let sync_stats = if let Some(peer) = peer {
-        Some(sync_over_tcp(store, root, peer, options).await?)
-    } else {
-        snapshot(store, root, &tree, Some("scan"))?;
-        None
-    };
+    let sync_stats = sync_peers(store, root, peers, options, &tree, "scan").await?;
     let mut status = status.lock().unwrap_or_else(|p| p.into_inner());
     status.state = "resting".to_owned();
     status.progress = 100;
@@ -493,5 +483,45 @@ fn accept_watch(
                 }
             }
         });
+    }
+}
+
+async fn sync_peers(
+    store: &Store,
+    root: &Root,
+    peers: &[String],
+    options: &SyncOptions,
+    tree: &TreeManifest,
+    message: &str,
+) -> Result<Option<SyncStats>> {
+    if peers.is_empty() {
+        snapshot(store, root, tree, Some(message))?;
+        return Ok(None);
+    }
+    let mut aggregate = SyncStats::default();
+    let mut succeeded = false;
+    let mut last_error = None;
+    for peer in peers {
+        match sync_over_tcp(store, root, peer, options).await {
+            Ok(stats) => {
+                succeeded = true;
+                aggregate.pushed += stats.pushed;
+                aggregate.pulled += stats.pulled;
+                aggregate.conflicts += stats.conflicts;
+                aggregate.bytes_up += stats.bytes_up;
+                aggregate.bytes_down += stats.bytes_down;
+            }
+            Err(error) => {
+                warn!("peer {peer} failed: {error:#}");
+                last_error = Some(error);
+            }
+        }
+    }
+    if succeeded {
+        Ok(Some(aggregate))
+    } else if let Some(error) = last_error {
+        Err(error)
+    } else {
+        Ok(None)
     }
 }

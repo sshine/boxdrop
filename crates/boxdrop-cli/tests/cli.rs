@@ -260,6 +260,49 @@ fn restore_and_diff_are_reachable_from_the_cli() {
 }
 
 #[test]
+fn peers_are_stored_per_root() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    let state = dir.path().join("state");
+    fs::create_dir_all(&root).unwrap();
+    assert!(
+        boxdrop(
+            &state,
+            &[
+                "--root",
+                root.to_string_lossy().as_ref(),
+                "init",
+                root.to_string_lossy().as_ref()
+            ]
+        )
+        .status
+        .success()
+    );
+    let root_arg = root.to_string_lossy().into_owned();
+    assert!(
+        boxdrop(
+            &state,
+            &["--root", &root_arg, "peer", "add", "laptop", "laptop:7777"]
+        )
+        .status
+        .success()
+    );
+    let output = boxdrop(&state, &["--root", &root_arg, "peer", "list", "--json"]);
+    assert!(output.status.success());
+    let peers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(peers.len(), 1);
+    assert_eq!(peers[0]["name"], "laptop");
+    assert!(
+        boxdrop(&state, &["--root", &root_arg, "peer", "remove", "laptop"])
+            .status
+            .success()
+    );
+    let output = boxdrop(&state, &["--root", &root_arg, "peer", "list", "--json"]);
+    let peers: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(peers.is_empty());
+}
+
+#[test]
 fn native_status_reports_the_filesystem_capabilities() {
     let dir = TempDir::new().unwrap();
     let root = dir.path().join("root");

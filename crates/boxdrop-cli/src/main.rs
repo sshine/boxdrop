@@ -104,6 +104,11 @@ enum Command {
         #[arg(long)]
         to: Option<PathBuf>,
     },
+    /// Manage peers for the current root.
+    Peer {
+        #[command(subcommand)]
+        command: PeerCommand,
+    },
     /// Inspect or use native filesystem snapshots.
     Native {
         #[command(subcommand)]
@@ -111,6 +116,13 @@ enum Command {
     },
     /// Check local limits and state.
     Doctor,
+}
+
+#[derive(Subcommand)]
+enum PeerCommand {
+    Add { name: String, address: String },
+    List,
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -312,6 +324,35 @@ async fn main() -> Result<()> {
                 snapshot(&store, &root, &tree, Some("restore"))?;
             }
             println!("restored {count} entries into {}", destination.display());
+        }
+        Command::Peer { command } => {
+            let store = Store::open(&state)?;
+            let root = resolve_root(&store, cli.root.as_deref())?;
+            match command {
+                PeerCommand::Add { name, address } => {
+                    store.add_peer(root.root_id, &name, &address)?;
+                    println!("added peer {name} -> {address}");
+                }
+                PeerCommand::List => {
+                    let peers = store.list_peers(root.root_id)?;
+                    if cli.json {
+                        println!("{}", serde_json::to_string_pretty(&peers)?);
+                    } else {
+                        for peer in peers {
+                            println!(
+                                "{}\t{}\t{}",
+                                peer.name,
+                                peer.address,
+                                if peer.enabled { "enabled" } else { "disabled" }
+                            );
+                        }
+                    }
+                }
+                PeerCommand::Remove { name } => {
+                    store.remove_peer(root.root_id, &name)?;
+                    println!("removed peer {name}");
+                }
+            }
         }
         Command::Native { command } => {
             let store = Store::open(&state)?;

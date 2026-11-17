@@ -40,6 +40,17 @@ The daemon can also listen for TCP sessions (`boxdropd --listen 0.0.0.0:7777`)
 or a one-shot server can be started with `boxdrop serve --listen ...`. SSH is
 the recommended default for machines behind NAT.
 
+Peers can be stored per root so the daemon picks them up on every start:
+
+```sh
+boxdrop peer add laptop laptop:7777
+boxdrop peer list
+boxdrop peer remove laptop
+```
+
+`boxdropd --peer host:port` adds one more address for that run; the two sources
+are merged and each peer is attempted independently.
+
 ## Resume
 
 A session is idempotent. If the connection drops after some blocks have been
