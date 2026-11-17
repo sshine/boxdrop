@@ -392,7 +392,7 @@ impl Store {
         let conn = self.conn();
         let mut statement = conn.prepare(
             "SELECT id, parents, root_id, tree_hash, device_id, created_at_ms, message
-             FROM snapshots WHERE root_id = ?1 ORDER BY created_at_ms DESC LIMIT ?2",
+             FROM snapshots WHERE root_id = ?1 ORDER BY created_at_ms DESC, rowid DESC LIMIT ?2",
         )?;
         let rows = statement.query_map(params![root_id.to_string(), limit], |row| {
             let id: String = row.get(0)?;
