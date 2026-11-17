@@ -29,4 +29,4 @@ pub use version::VersionVector;
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Current on-disk schema version.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;

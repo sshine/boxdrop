@@ -1,6 +1,7 @@
 /// Each string is one migration, applied in order and recorded in
 /// `PRAGMA user_version`.
-pub const MIGRATIONS: &[&str] = &[r#"
+pub const MIGRATIONS: &[&str] = &[
+    r#"
     CREATE TABLE IF NOT EXISTS meta (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -78,4 +79,16 @@ pub const MIGRATIONS: &[&str] = &[r#"
         address    TEXT NOT NULL,
         enabled    INTEGER NOT NULL DEFAULT 1
     );
-    "#];
+    "#,
+    MIGRATION_2,
+];
+
+/// Migration 2: a snapshot tree is one compact bincode blob keyed by its tree
+/// hash. Identical trees are shared, and the per-path `snapshot_entries` table
+/// is only a compatibility fallback for snapshots written by schema 1.
+pub const MIGRATION_2: &str = r#"
+CREATE TABLE IF NOT EXISTS trees (
+    tree_hash TEXT PRIMARY KEY,
+    entries   BLOB NOT NULL
+) WITHOUT ROWID;
+"#;

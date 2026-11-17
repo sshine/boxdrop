@@ -359,6 +359,12 @@ impl Store {
             created_at_ms: now_ms(),
             message: message.map(ToOwned::to_owned),
         };
+        let entries = tree
+            .entries
+            .iter()
+            .map(|(path, entry)| (path.clone(), entry.clone()))
+            .collect::<Vec<_>>();
+        let blob = bincode::serde::encode_to_vec(&entries, bincode::config::standard())?;
         let conn = self.conn();
         let tx = conn.unchecked_transaction()?;
         tx.execute(
@@ -374,16 +380,10 @@ impl Store {
                 snapshot.message,
             ],
         )?;
-        for (path, entry) in &tree.entries {
-            tx.execute(
-                "INSERT OR REPLACE INTO snapshot_entries(snapshot_id, path, entry) VALUES (?1, ?2, ?3)",
-                params![
-                    snapshot.id.to_string(),
-                    path,
-                    serde_json::to_string(entry)?
-                ],
-            )?;
-        }
+        tx.execute(
+            "INSERT OR IGNORE INTO trees(tree_hash, entries) VALUES (?1, ?2)",
+            params![snapshot.tree_hash.to_string(), blob],
+        )?;
         tx.commit()?;
         Ok(snapshot)
     }
@@ -428,6 +428,28 @@ impl Store {
 
     pub fn snapshot_entries(&self, snapshot_id: Hash32) -> Result<Vec<(String, Entry)>> {
         let conn = self.conn();
+        let tree_hash: Option<String> = conn
+            .query_row(
+                "SELECT tree_hash FROM snapshots WHERE id = ?1",
+                [snapshot_id.to_string()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(tree_hash) = tree_hash {
+            let blob: Option<Vec<u8>> = conn
+                .query_row(
+                    "SELECT entries FROM trees WHERE tree_hash = ?1",
+                    [tree_hash],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            if let Some(blob) = blob {
+                let (entries, _): (Vec<(String, Entry)>, _) =
+                    bincode::serde::decode_from_slice(&blob, bincode::config::standard())?;
+                return Ok(entries);
+            }
+        }
+        // Compatibility with snapshots written before migration 2.
         let mut statement = conn.prepare(
             "SELECT path, entry FROM snapshot_entries WHERE snapshot_id = ?1 ORDER BY path",
         )?;
@@ -440,6 +462,12 @@ impl Store {
             entries.push((path, serde_json::from_str(&entry)?));
         }
         Ok(entries)
+    }
+
+    pub fn tree_count(&self) -> Result<u64> {
+        let conn = self.conn();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM trees", [], |row| row.get(0))?;
+        Ok(count as u64)
     }
 
     /// Enqueue a change. The quiet period doubles per rapid change of the same
@@ -841,9 +869,15 @@ mod tests {
             },
         );
         let snapshot = store.create_snapshot(&tree, &[], Some("first")).unwrap();
+        let second = store
+            .create_snapshot(&tree, &[snapshot.id], Some("second"))
+            .unwrap();
         let entries = store.snapshot_entries(snapshot.id).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(store.list_snapshots(root, 10).unwrap().len(), 1);
+        assert_eq!(store.snapshot_entries(second.id).unwrap().len(), 1);
+        assert_eq!(store.list_snapshots(root, 10).unwrap().len(), 2);
+        // The second snapshot shares the first snapshot's tree blob.
+        assert_eq!(store.tree_count().unwrap(), 1);
     }
 
     #[test]

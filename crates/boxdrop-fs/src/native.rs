@@ -158,16 +158,7 @@ pub fn changed_paths(root: &Path, from: &str, to: &str) -> Result<Vec<String>> {
                     &format!("{dataset}@{to}"),
                 ],
             )?;
-            let mut paths = Vec::new();
-            for line in output.lines() {
-                let mut fields = line.splitn(4, '\t');
-                let _change = fields.next();
-                let path = fields.nth(2).unwrap_or_default();
-                if let Some(relative) = strip_mount(path, &capabilities.mount_point) {
-                    paths.push(relative);
-                }
-            }
-            Ok(paths)
+            Ok(parse_zfs_diff(&output, &capabilities.mount_point))
         }
         NativeKind::Btrfs => {
             let parent = root.parent().unwrap_or(root);
@@ -278,6 +269,22 @@ fn btrfs_generation(subvolume: &Path) -> Result<Option<u64>> {
     Ok(None)
 }
 
+fn parse_zfs_diff(output: &str, mount_point: &Path) -> Vec<String> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let fields = line.split('\t').collect::<Vec<_>>();
+            let change = *fields.first()?;
+            let path = if change == "R" {
+                fields.get(2).copied()
+            } else {
+                fields.get(1).copied()
+            }?;
+            strip_mount(path, mount_point)
+        })
+        .collect()
+}
+
 fn strip_mount(path: &str, mount_point: &Path) -> Option<String> {
     let path = Path::new(path);
     path.strip_prefix(mount_point).ok().map(|relative| {
@@ -343,6 +350,13 @@ mod tests {
         ) {
             assert!(create_snapshot(dir.path(), "one").is_err());
         }
+    }
+
+    #[test]
+    fn parses_zfs_diff_renames_and_modifications() {
+        let output = "M\t/tank/home/notes\n+\t/tank/home/new\n-\t/tank/home/gone\nR\t/tank/home/old\t/tank/home/new-name\n";
+        let paths = parse_zfs_diff(output, Path::new("/tank/home"));
+        assert_eq!(paths, vec!["notes", "new", "gone", "new-name"]);
     }
 
     #[test]

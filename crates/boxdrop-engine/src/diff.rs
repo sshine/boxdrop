@@ -32,7 +32,7 @@ pub fn diff_snapshots(store: &Store, left: Hash32, right: Hash32) -> Result<Vec<
                 path,
                 status: "deleted".to_owned(),
             }),
-            (Some(left), Some(right)) if left != right => diff.push(DiffEntry {
+            (Some(left), Some(right)) if !same_visible(left, right) => diff.push(DiffEntry {
                 path,
                 status: "modified".to_owned(),
             }),
@@ -40,6 +40,13 @@ pub fn diff_snapshots(store: &Store, left: Hash32, right: Hash32) -> Result<Vec<
         }
     }
     Ok(diff)
+}
+
+fn same_visible(left: &Entry, right: &Entry) -> bool {
+    left.kind == right.kind
+        && left.content_id == right.content_id
+        && left.symlink_target == right.symlink_target
+        && left.mode == right.mode
 }
 
 fn live_entries(store: &Store, snapshot: Hash32) -> Result<BTreeMap<String, Entry>> {
