@@ -1,0 +1,28 @@
+[package]
+name = "boxdrop-fs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Filesystem scanning, watching, atomic writes and native snapshot backends"
+
+[lints]
+workspace = true
+
+[dependencies]
+boxdrop-core.workspace = true
+anyhow.workspace = true
+blake3.workspace = true
+libc.workspace = true
+notify.workspace = true
+rustix.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

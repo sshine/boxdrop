@@ -1,0 +1,20 @@
+[package]
+name = "boxdrop-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Length-prefixed peer transport for Boxdrop"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bincode.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

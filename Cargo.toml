@@ -1,0 +1,60 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sshine/boxdrop"
+homepage = "https://github.com/sshine/boxdrop"
+
+[workspace.dependencies]
+boxdrop-core = { path = "crates/boxdrop-core" }
+boxdrop-store = { path = "crates/boxdrop-store" }
+boxdrop-fs = { path = "crates/boxdrop-fs" }
+boxdrop-proto = { path = "crates/boxdrop-proto" }
+boxdrop-net = { path = "crates/boxdrop-net" }
+boxdrop-engine = { path = "crates/boxdrop-engine" }
+boxdrop-daemon = { path = "crates/boxdrop-daemon" }
+boxdrop-cli = { path = "crates/boxdrop-cli" }
+boxdrop-harness = { path = "crates/boxdrop-harness" }
+
+anyhow = "1"
+assert_cmd = "2"
+bincode = { version = "2", features = ["serde"] }
+blake3 = "1"
+clap = { version = "4", features = ["derive", "env"] }
+criterion = "0.8"
+fs2 = "0.4"
+hex = "0.4"
+libc = "0.2"
+notify = "8"
+predicates = "3"
+proptest = "1"
+rand = "0.9"
+rand_chacha = "0.9"
+rusqlite = { version = "0.43", features = ["bundled"] }
+rustix = { version = "1", features = ["fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "signal", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+walkdir = "2"
+zbus = { version = "6", default-features = false, features = ["tokio"] }
+
+[workspace.lints.rust]
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+strip = true
+lto = "thin"

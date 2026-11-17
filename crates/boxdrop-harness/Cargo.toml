@@ -1,0 +1,32 @@
+[package]
+name = "boxdrop-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Deterministic simulation and perpetual soak harness for Boxdrop"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "boxdrop-harness"
+path = "src/main.rs"
+
+[dependencies]
+boxdrop-core.workspace = true
+boxdrop-engine.workspace = true
+boxdrop-fs.workspace = true
+boxdrop-store.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

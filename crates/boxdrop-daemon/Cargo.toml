@@ -1,0 +1,36 @@
+[package]
+name = "boxdrop-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "The Boxdrop background daemon"
+
+[[bin]]
+name = "boxdropd"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+boxdrop-core.workspace = true
+boxdrop-engine.workspace = true
+boxdrop-fs.workspace = true
+boxdrop-net.workspace = true
+boxdrop-store.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+fs2.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+zbus.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

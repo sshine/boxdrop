@@ -1,0 +1,17 @@
+[package]
+name = "boxdrop-proto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Wire messages shared by Boxdrop peers"
+
+[lints]
+workspace = true
+
+[dependencies]
+boxdrop-core.workspace = true
+bincode.workspace = true
+serde.workspace = true

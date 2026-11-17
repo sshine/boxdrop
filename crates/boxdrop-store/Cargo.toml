@@ -1,0 +1,25 @@
+[package]
+name = "boxdrop-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Durable SQLite metadata, queue, snapshots and content-addressed blobs"
+
+[lints]
+workspace = true
+
+[dependencies]
+boxdrop-core.workspace = true
+anyhow.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
